@@ -13,12 +13,15 @@
 #include <gl/glut.h>
 #include <iostream>
 #include <string>
+#include <sstream>
 using namespace std;
 #include "World.h"
 #include "Renderer.h"
 #include "Camera.h"
 
-GLfloat screenWidth = 500, screenHeight = 500;
+#include "Materials.h"
+
+GLfloat screenWidth = 800, screenHeight = 600;
 
 World world;
 Renderer renderer;
@@ -43,6 +46,7 @@ void updateCamera();
 void gameOverMessage();
 void victoryMessage();
 void printStats(int value);
+void renderHUD();
 
 
 int main(int argc, char **argv)
@@ -62,7 +66,6 @@ int main(int argc, char **argv)
 	glutSpecialFunc(mySpecial);
 	glutSpecialUpFunc(mySpecialUp);
 	glutTimerFunc(16, myTimer, 0);
-	glutTimerFunc(1000, printStats,1000);
 
 	init();
 	glutMainLoop();
@@ -105,8 +108,8 @@ void myDisplay()
 	glEnable(GL_DEPTH_TEST);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	
-
+	// 3d rendering
+	cam.setShape(60, 1, 0.1, 1000);
 	cam.setModelViewMatrix();
 
 	GLfloat light_position[] = { 1.0, 10.0, 0.0, 0.0 };
@@ -121,7 +124,43 @@ void myDisplay()
 	for (Coin &coin : world.coinList)
 		renderer.renderCoin(coin);
 
+	renderHUD();
+
+
+
 	glutSwapBuffers();
+}
+
+void renderString(float x, float y, float z, string str)
+{
+	glRasterPos3f(x, y, z);
+	for (int i = 0; i < str.length(); i++)
+	{
+		glutBitmapCharacter(GLUT_BITMAP_8_BY_13, str.at(i));
+	}
+}
+
+void renderHUD()
+{
+	glDisable(GL_LIGHTING);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluOrtho2D(-1, 1, -1, 1);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glColor3f(1, 0, 0);
+	glRectf(-1, 0.9, 1, 1);
+	glColor3f(0, 0, 1);
+	stringstream ss;
+	ss << "hp: " << (world.robot.hitPoints() > 9 ? "" : " ") << world.robot.hitPoints()<< "  numEnemies: " << world.enemyList.size()
+		<< "    current coins: " << world.currentCoins() << "    total coins collected: " << world.coinsCollected();
+	
+	renderString(-0.8, 0.92, 1, ss.str());
+
+	glEnable(GL_LIGHTING);
 }
 
 void myMouse(int button, int status, int x, int y)
@@ -401,8 +440,6 @@ void printStats(int value)
 			<< "       ||           " << world.currentCoins()
 		<< "     ||   " << world.coinsCollected() << endl;
 	}
-	
-	glutTimerFunc(value, printStats, value);
 }
 
 void reset()
