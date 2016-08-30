@@ -123,6 +123,16 @@ void World::reset()
 	mpEnemyToRemove = NULL;
 }
 
+void World::nextLevel()
+{
+	enemyList.clear();
+	coinList.clear();
+	robot.nextLevel();
+	enemyList.clear();
+	coinList.clear();
+	mpEnemyToRemove = NULL;
+}
+
 int World::coinsCollected() const
 {
 	return mNumCoinsCollected;
@@ -136,11 +146,4 @@ int World::currentCoins() const
 void World::spendCoins(int coinsSpent)
 {
 	mCurrentCoins -= coinsSpent;
-}
-
-void World::nextLevel()
-{
-	enemyList.clear();
-	coinList.clear();
-	robot.nextLevel();
 }

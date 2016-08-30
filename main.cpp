@@ -18,16 +18,19 @@ using namespace std;
 #include "World.h"
 #include "Renderer.h"
 #include "Camera.h"
+#include <stack>
 
 #include "Materials.h"
 
 GLfloat screenWidth = 800, screenHeight = 600;
 
+enum Menu{None, Pause, Instructions, Welcome, Buy, InGoal, Death} currentMenu;
+stack<Menu> menuStack;
 World world;
 Renderer renderer;
 Camera cam;
-bool wireframe, controlsAreOn, animationOn, showAxes, paused, isBuying, isVictorious, isDead;
 float mouseDownPositionX, oldCameraRotation, cameraRotation;
+string buyMessage;
 
 
 void init();
@@ -43,10 +46,9 @@ void mySpecial(int key, int x, int y);
 void mySpecialUp(int key, int x, int y);
 void myTimer(int value);
 void updateCamera();
-void gameOverMessage();
-void victoryMessage();
-void printStats(int value);
 void renderHUD();
+void renderMenu(const string &str);
+void renderString(float x, float y, float z, string str);
 
 
 int main(int argc, char **argv)
@@ -71,6 +73,25 @@ int main(int argc, char **argv)
 	glutMainLoop();
 }
 
+void renderMenu(const string &str)
+{
+	glDisable(GL_LIGHTING);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluOrtho2D(-1, 1, -1, 1);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glColor3f(1, 0, 0);
+	glRectf(-1, -1, 1, 1);
+	glColor3f(0, 0, 1);
+	
+	renderString(-0.8, 0.92, 1, str);
+
+}
+
 void myTimer(int value)
 {
 	static float lastTime = glutGet(GLUT_ELAPSED_TIME);
@@ -78,23 +99,19 @@ void myTimer(int value)
 	float deltaTime = (currentTime - lastTime) / 1000.f;
 	lastTime = currentTime;
 
-	if (!paused)
+	if (currentMenu == Menu::None)
 	{
 		world.update(deltaTime);
 		updateCamera();
 
 		if (world.robot.hitPoints() < 1)
 		{
-			paused = true;
-			isDead = true;
-			gameOverMessage();
+			currentMenu = Menu::Death;
 		}
 
 		if (world.robotIsInGoal())
 		{
-			isVictorious = true;
-			paused = true;
-			victoryMessage();
+			currentMenu = Menu::InGoal;
 		}
 	}
 
@@ -105,27 +122,81 @@ void myTimer(int value)
 
 void myDisplay()
 {
-	glEnable(GL_DEPTH_TEST);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// 3d rendering
-	cam.setShape(60, 1, 0.1, 1000);
-	cam.setModelViewMatrix();
+	if (currentMenu == Menu::Pause)
+	{
+		renderMenu(string("---PAUSE MENU---\nPress a number key to select the option:\n")
+			+"(1) resume game\n(2) see instructions\n(3) restart game");
+	}
+	else if (currentMenu == Menu::Instructions)
+	{
+		renderMenu(string("---INSTRUCTIONS---\nPress the (1) key to return to previous menu\n\n")
+			+ "In this game you are being attacked by vicious enemies... but you control a robot arm!\n"
+			+ "Defeat enemies and collect their gold coins to purchase upgrades.\n"
+			+ "See how long you can survive.\n\n"
+			+ "* The red square is a safe spot. You can buy upgrades there too.\n"
+			+ "* W, A, S, D keys move the robot arm.\n"
+			+ "* 7, 8 and 9 keys use the robot's attack abilities\n"
+			+ "    (You'll start off with only the punch ability but can purchase others later).\n"
+			+ "* Hit P at any time to pause the game.\n"
+			+ "* Look around by dragging the mouse. Left Mouse Button is normal look around.\n"
+			+ "* Right Mouse Button is look around with a snap-back when you let go.\n"		
+		);
+	}
+	else if (currentMenu == Menu::InGoal)
+	{
+		renderMenu(string("---CHECKPOINT---\nYou made it to safety!\n")
+			+"Press a number key to select the option:\n(1) resume game\n(2) buy something");
+	}
+	else if (currentMenu == Menu::Buy)
+	{
+		renderMenu(string("---STORE---\nBuy upgrades to help fight enemies!\n")
+			+"You have " + to_string(world.currentCoins()) + " Gold\n"
+			+ "Press a number key to select the option:\n"
+			+ "(1) Buy Faster Speed for 5 Gold\n"
+			+ "(2) Buy Throw Ball ability for 10 Gold\n"
+			+ "(3) Buy Freeze ability for 15 Gold\n"
+			+ "(4) Go back\n\n\n\n\n\n" + buyMessage);
+	}
+	else if (currentMenu == Menu::Death)
+	{
+		renderMenu(string("---DEATH---\nSorry... you died.\nPress (1) when you're ready to restart the game\n\n\n")
+			+ "Coins Collected: " + to_string(world.coinsCollected())
+			+ "\nCurrent Coins: " + to_string(world.currentCoins())
+			+ "\nAbilities Purchased: " + (world.robot.hasFastMovement ? "Fast Movement, " : "") 
+			+ (world.robot.canThrowBall ? "Throw Ball, " : "") + (world.robot.canFreezeEnemies ? "Freeze Enemies" : ""));
+	}
+	else if (currentMenu == Menu::Welcome)
+	{
+		renderMenu(string("---WELCOME---\nEnjoy the Robot-Arm Game.\nPress a number key to select the option:\n")
+			+ "(1) start the game\n"
+			+ "(2) see instructions");
+	}
+	else
+	{
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_LIGHTING);
 
-	GLfloat light_position[] = { 1.0, 10.0, 0.0, 0.0 };
-	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+		// 3d rendering
+		cam.setShape(60, 1, 0.1, 1000);
+		cam.setModelViewMatrix();
 
-	renderer.render(world.ball);
-	renderer.render(world.robot, wireframe, controlsAreOn);
-	renderer.renderRoom(world.roomBox);
-	renderer.renderGoal(world.goalBox);
-	for (Enemy &enemy : world.enemyList)
-		renderer.render(enemy);
-	for (Coin &coin : world.coinList)
-		renderer.renderCoin(coin);
+		GLfloat light_position[] = { 1.0, 10.0, 0.0, 0.0 };
+		glLightfv(GL_LIGHT0, GL_POSITION, light_position);
 
-	renderHUD();
+		renderer.render(world.ball);
+		renderer.render(world.robot, false, true);
+		renderer.renderRoom(world.roomBox);
+		renderer.renderGoal(world.goalBox);
+		for (Enemy &enemy : world.enemyList)
+			renderer.render(enemy);
+		for (Coin &coin : world.coinList)
+			renderer.renderCoin(coin);
 
+		renderHUD();
+	}
+	
 
 
 	glutSwapBuffers();
@@ -134,9 +205,19 @@ void myDisplay()
 void renderString(float x, float y, float z, string str)
 {
 	glRasterPos3f(x, y, z);
+	float currentY = y;
 	for (int i = 0; i < str.length(); i++)
 	{
-		glutBitmapCharacter(GLUT_BITMAP_8_BY_13, str.at(i));
+		char currentChar = str.at(i);
+		if (currentChar == '\n')
+		{
+			currentY -= 0.05;
+			glRasterPos3f(x, currentY, z);
+		}
+		else
+		{
+			glutBitmapCharacter(GLUT_BITMAP_8_BY_13, str.at(i));
+		}
 	}
 }
 
@@ -160,7 +241,6 @@ void renderHUD()
 	
 	renderString(-0.8, 0.92, 1, ss.str());
 
-	glEnable(GL_LIGHTING);
 }
 
 void myMouse(int button, int status, int x, int y)
@@ -185,10 +265,13 @@ void myMotion(int x, int y)
 		cameraRotation = (x - mouseDownPositionX) / 5 + oldCameraRotation;
 }
 
+
 void myKeyboard(unsigned char key, int x, int y)
 {
-	switch (key)
+	if (currentMenu == Menu::None)
 	{
+		switch (key)
+		{
 		case 'w':
 			world.robot.control.moveForward = true;
 			break;
@@ -217,83 +300,136 @@ void myKeyboard(unsigned char key, int x, int y)
 			world.robot.control.freezeEnemies = true;
 			break;
 		case 'p':
-			paused = !paused;
+			menuStack.push(currentMenu);
+			currentMenu = Menu::Pause;
 			break;
-		case 'm':
-			world.reset();
-			break;
-		case 'j':
-			if (isVictorious)
-				nextLevel();
-			else if (isDead)
-				reset();
-			break;
-		case 'k':
-			// allows buying something
-			isBuying = true;
-			cout << "What would you like to buy?" << endl;
-			cout << "Press 1 to buy 'Throw Ball Ability' for ten coins" << endl;
-			cout << "Press 2 to buy 'Faster Speed' for five coins" << endl;
-			cout << "Press 3 to buy 'Freeze Enemies' for 15 coins" << endl;
-			cout << "Press 4 to not buy anything." << endl;
-			break;
+		}
+	}
+	else if (currentMenu == Menu::Pause)
+	{
+		switch (key)
+		{
 		case '1':
-			if (isBuying)
-			{
-				if (world.robot.canThrowBall)
-				{
-					cout << "You already have 'Throw Ball Ability'!" << endl;
-				}
-				else if (world.currentCoins() >= 10)
-				{
-					world.spendCoins(10);
-					world.robot.canThrowBall = true;
-				}
-				else
-				{
-					cout << "Sorry, you don't have enough coins for 'Throw Ball Ability'" << endl;
-				}
-			}
+			currentMenu = menuStack.top();
+			menuStack.pop();
 			break;
 		case '2':
-			if (isBuying)
+			menuStack.push(currentMenu);
+			currentMenu = Menu::Instructions;
+			break;
+		case '3':
+			reset();
+			break;
+		}
+	}
+	else if (currentMenu == Menu::Instructions)
+	{
+		if (key == '1')
+		{
+			currentMenu = menuStack.top();
+			menuStack.pop();
+		}
+
+	}
+	else if (currentMenu == Menu::InGoal)
+	{
+		if (key == '1')
+		{
+			nextLevel();
+		}
+		else if (key == '2')
+		{
+			menuStack.push(currentMenu);
+			currentMenu = Menu::Buy;
+			buyMessage = "";
+		}
+	}
+	else if (currentMenu == Menu::Buy)
+	{
+		if (key == '1')
+		{
+			if (world.currentCoins() >= 5)
 			{
 				if (world.robot.hasFastMovement)
 				{
-					cout << "You already have 'Fast Movement'!" << endl;
+					buyMessage = "Purchase Unsuccessful: Already have fast movement";
 				}
-				else if (world.currentCoins() >= 5)
+				else
 				{
+					buyMessage = "Purchase Successful: You now have fast movement";
 					world.spendCoins(5);
 					world.robot.hasFastMovement = true;
 				}
+			}
+			else
+			{
+				buyMessage = "Purchase Unsuccessful: You don't have enough coins";
+			}
+		}
+		else if (key == '2')
+		{
+			if (world.currentCoins() >= 10)
+			{
+				if (world.robot.canThrowBall)
+				{
+					buyMessage = "Purchase Unsuccessful: Already can throw ball";
+				}
 				else
 				{
-					cout << "Sorry, you don't have enough coins for 'Fast Movement'" << endl;
+					buyMessage = "Purchase Successful: You now can throw ball";
+					world.spendCoins(10);
+					world.robot.canThrowBall = true;
 				}
 			}
-			break;
-		case '3':
-			if (isBuying)
+			else
+			{
+				buyMessage = "Purchase Unsuccessful: You don't have enough coins";
+			}
+		}
+		else if (key == '3')
+		{
+			if (world.currentCoins() >= 15)
 			{
 				if (world.robot.canFreezeEnemies)
 				{
-					cout << "You already have 'Freeze Enemies Ability'!" << endl;
-				}
-				else if (world.currentCoins() >= 15)
-				{
-					world.spendCoins(15);
-					world.robot.canFreezeEnemies = true;
+					buyMessage = "Purchase Unsuccessful: Already can freeze enemies";
 				}
 				else
 				{
-					cout << "Sorry, you don't have enough coins for 'Freeze Enemies Ability'" << endl;
+					buyMessage = "Purchase Successful: You now can freeze enemies";
+					world.spendCoins(15);
+					world.robot.canFreezeEnemies = true;
 				}
 			}
-			break;
-		case '4':
-			isBuying = false;
-			break;
+			else
+			{
+				buyMessage = "Purchase Unsuccessful: You don't have enough coins";
+			}
+		}
+		else if (key == '4')
+		{
+			currentMenu = menuStack.top();
+			menuStack.pop();
+		}
+	}
+	else if (currentMenu == Menu::Death)
+	{
+		if (key == '1')
+		{
+			reset();
+		}
+	}
+	else if (currentMenu == Menu::Welcome)
+	{
+		if (key == '1')
+		{
+			currentMenu = None;
+		}
+		else if (key == '2')
+		{
+			menuStack.push(currentMenu);
+			currentMenu = Menu::Instructions;
+		}
 	}
 }
 
@@ -367,17 +503,10 @@ void mySpecialUp(int key, int x, int y)
 
 void init()
 {
-	isBuying = isVictorious = isDead = false;
-	wireframe = false;
-	controlsAreOn = true;
-	world.reset();
-	showAxes = false;
-	paused = false;
-	cameraRotation = oldCameraRotation = 0;
+	reset();
 	
 	lightingInit();
 
-	cam.set(Vec3(0, 2, 20), Vec3(0, 0, 0), Vec3(0, 1, 0));
 	cam.setShape(60, 1, 0.01, 1000);
 
 	glEnable(GL_DEPTH_TEST);
@@ -413,44 +542,23 @@ void updateCamera()
 	cam.set(eye, robotPos, Vec3(0, 1, 0));
 }
 
-void gameOverMessage()
-{
-	cout << "\n\n\nSorry, you lose, press the 'm' key to start over.\n\n\n" << endl;
-}
-
-void victoryMessage()
-{
-	cout << "\n\n\n";
-	cout << "Congratulations!You've completed this level.\n\n";
-	cout << "You can spend your hard earned coins by pressing 'k'.\n\n";
-	cout << "To play the next level press 'j'\n\n" << endl;
-	cout << "To start over press 'm'\n\n" << endl;
-}
-
-void printStats(int value)
-{
-	if (!paused)
-	{
-		if (system("clear")) system("cls");
-		cout << "======================================================================" << endl;
-		cout << "  hp   ||  num enemies  ||  current coins  ||   total coins collected" << endl;
-		cout << "----------------------------------------------------------------------" << endl;
-		cout << "  " << (world.robot.hitPoints() > 9 ? "" : " ") << world.robot.hitPoints()
-			<< "   ||       " << world.enemyList.size()
-			<< "       ||           " << world.currentCoins()
-		<< "     ||   " << world.coinsCollected() << endl;
-	}
-}
 
 void reset()
 {
 	world.reset();
+	while (!menuStack.empty())
+		menuStack.pop();
+	currentMenu = Menu::Welcome;
+	cameraRotation = oldCameraRotation = 0;
+	cam.set(Vec3(0, 2, 20), Vec3(0, 0, 0), Vec3(0, 1, 0));
 }
 
 void nextLevel()
 {
+	while (!menuStack.empty())
+		menuStack.pop();
+	currentMenu = Menu::None;
 	world.nextLevel();
 	updateCamera();
 	glutPostRedisplay();
-	paused = false;
 }

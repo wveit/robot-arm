@@ -24,7 +24,7 @@ Camera::Camera()
 	n = Vec3(0, 0, 1);
 }
 
-void Camera :: setModelViewMatrix(void)
+void Camera :: setModelViewMatrix()
 {
 	GLfloat m[16];
 	m[0] =  u.x; m[4] =  u.y; m[8]  =  u.z;  m[12] = -eye.dot(u);
